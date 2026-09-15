@@ -84,6 +84,7 @@ function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion) {
   const embed = new EmbedBuilder()
     .setTitle(`${tracked.win ? '✅ Victoria' : '❌ Derrota'} · Ranked Solo/Duo · ${formatDuration(durationSeconds)}`)
     .setColor(tracked.win ? WIN_COLOR : LOSS_COLOR)
+    .setDescription(`🕐 <t:${endSeconds}:f>`)
     .setFooter({ text: `Parche ${patch}` })
     .setTimestamp(endSeconds * 1000);
 
