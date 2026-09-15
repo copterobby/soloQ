@@ -7,11 +7,12 @@ const loluser = require('./commands/loluser');
 const leaderboard = require('./commands/leaderboard');
 const trackchannel = require('./commands/trackchannel');
 const testgame = require('./commands/testgame');
+const syncgames = require('./commands/syncgames');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.commands = new Collection();
-for (const command of [loluser, leaderboard, trackchannel, testgame]) {
+for (const command of [loluser, leaderboard, trackchannel, testgame, syncgames]) {
   client.commands.set(command.data.name, command);
 }
 

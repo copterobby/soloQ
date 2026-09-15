@@ -4,8 +4,11 @@ const loluser = require('./commands/loluser');
 const leaderboard = require('./commands/leaderboard');
 const trackchannel = require('./commands/trackchannel');
 const testgame = require('./commands/testgame');
+const syncgames = require('./commands/syncgames');
 
-const commands = [loluser, leaderboard, trackchannel, testgame].map((command) => command.data.toJSON());
+const commands = [loluser, leaderboard, trackchannel, testgame, syncgames].map((command) =>
+  command.data.toJSON()
+);
 const rest = new REST().setToken(config.discordToken);
 
 async function main() {
