@@ -1,150 +1,78 @@
-const {
-  SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ComponentType,
-} = require('discord.js');
-const { getRankedSoloMatches } = require('../riot/match');
-const { RiotRateLimitError, RiotApiError } = require('../riot/client');
-const { getLatestVersion } = require('../riot/ddragon');
-const { getRankedSoloEntry, getRankedSoloEntriesByPuuid } = require('../riot/league');
-const { buildLeaderboardEmbeds, buildMatchDetailEmbed, NUMBER_EMOJIS } = require('../discord/embeds');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const userStore = require('../storage/userStore');
+const { getRankedSoloEntry } = require('../riot/league');
+const { formatRankedEntry } = require('../discord/embeds');
 
-const MATCH_COUNT = 5;
-const COLLECTOR_DURATION_MS = 5 * 60 * 1000;
+const TIER_ORDER = [
+  'IRON',
+  'BRONZE',
+  'SILVER',
+  'GOLD',
+  'PLATINUM',
+  'EMERALD',
+  'DIAMOND',
+  'MASTER',
+  'GRANDMASTER',
+  'CHALLENGER',
+];
+const DIVISION_SCORE = { IV: 0, III: 1, II: 2, I: 3 };
+const POSITION_MEDALS = ['🥇', '🥈', '🥉'];
 
 const data = new SlashCommandBuilder()
   .setName('leaderboard')
-  .setDescription('Muestra el historial reciente de ranked solo/duo de un usuario')
-  .addUserOption((option) =>
-    option.setName('usuario').setDescription('Usuario de Discord a consultar').setRequired(true)
-  );
+  .setDescription('Leaderboard del servidor: compara el rango de ranked solo/duo de todos los vinculados');
 
-function summarizeMatch(match, puuid) {
-  const participant = match.info.participants.find((p) => p.puuid === puuid);
-  return {
-    matchId: match.metadata.matchId,
-    win: participant.win,
-    championName: participant.championName,
-    kills: participant.kills,
-    deaths: participant.deaths,
-    assists: participant.assists,
-    cs: participant.totalMinionsKilled + participant.neutralMinionsKilled,
-    damageDealt: participant.totalDamageDealtToChampions,
-    visionScore: participant.visionScore,
-    profileIconId: participant.profileIcon,
-    durationSeconds: match.info.gameDuration,
-    endTimestampSeconds: Math.floor(
-      (match.info.gameEndTimestamp || match.info.gameStartTimestamp + match.info.gameDuration * 1000) / 1000
-    ),
-  };
-}
-
-async function safeGetVersion() {
-  try {
-    return await getLatestVersion();
-  } catch (err) {
-    console.error('No se pudo obtener la versión de Data Dragon:', err);
-    return null;
-  }
-}
-
-async function safeGetRankedEntry(puuid) {
-  try {
-    return await getRankedSoloEntry(puuid);
-  } catch (err) {
-    console.error('No se pudo obtener el rango del jugador:', err);
-    return null;
-  }
+function rankScore(entry) {
+  if (!entry) return -1;
+  const tierIndex = TIER_ORDER.indexOf(entry.tier);
+  const divisionIndex = DIVISION_SCORE[entry.rank] ?? 0;
+  return tierIndex * 400 + divisionIndex * 100 + entry.leaguePoints;
 }
 
 async function execute(interaction) {
-  const discordUser = interaction.options.getUser('usuario', true);
-  const registeredUser = userStore.getUser(discordUser.id);
+  await interaction.deferReply();
 
-  if (!registeredUser) {
-    await interaction.reply({
-      content: `${discordUser} todavía no tiene una cuenta de LoL vinculada. Usa \`/loluser\` primero.`,
-      ephemeral: true,
-    });
+  const users = userStore.getAllUsers();
+  if (users.length === 0) {
+    await interaction.editReply('Nadie ha vinculado su cuenta con `/loluser` todavía.');
     return;
   }
 
-  await interaction.deferReply();
+  const results = [];
+  for (const user of users) {
+    const member = await interaction.guild.members.fetch(user.discordId).catch(() => null);
+    if (!member) continue;
 
-  try {
-    const [matches, ddragonVersion, rankedEntry] = await Promise.all([
-      getRankedSoloMatches(registeredUser.puuid, MATCH_COUNT),
-      safeGetVersion(),
-      safeGetRankedEntry(registeredUser.puuid),
-    ]);
-
-    const summaries = matches.map((match) => summarizeMatch(match, registeredUser.puuid));
-    const embeds = buildLeaderboardEmbeds(registeredUser, summaries, ddragonVersion, rankedEntry);
-    const matchesById = new Map(matches.map((match) => [match.metadata.matchId, match]));
-
-    const row = new ActionRowBuilder().addComponents(
-      summaries.map((summary, index) =>
-        new ButtonBuilder()
-          .setCustomId(`matchDetail:${summary.matchId}`)
-          .setEmoji(NUMBER_EMOJIS[index])
-          .setStyle(ButtonStyle.Secondary)
-      )
-    );
-
-    const components = summaries.length > 0 ? [row] : [];
-    const response = await interaction.editReply({ embeds, components });
-
-    if (summaries.length === 0) return;
-
-    const collector = response.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: COLLECTOR_DURATION_MS,
-    });
-
-    collector.on('collect', async (buttonInteraction) => {
-      if (buttonInteraction.user.id !== interaction.user.id) {
-        await buttonInteraction.reply({
-          content: 'Solo quien pidió este leaderboard puede ver el detalle de las partidas.',
-          ephemeral: true,
-        });
-        return;
-      }
-
-      const matchId = buttonInteraction.customId.split(':')[1];
-      const match = matchesById.get(matchId);
-      if (!match) {
-        await buttonInteraction.reply({ content: 'No se encontró esa partida.', ephemeral: true });
-        return;
-      }
-
-      await buttonInteraction.deferReply({ ephemeral: true });
-      const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
-      const detailEmbed = buildMatchDetailEmbed(match, registeredUser.puuid, ddragonVersion, rankedEntries);
-      await buttonInteraction.editReply({ embeds: [detailEmbed] });
-    });
-
-    collector.on('end', async () => {
-      const disabledRow = new ActionRowBuilder().addComponents(
-        row.components.map((button) => ButtonBuilder.from(button).setDisabled(true))
-      );
-      await interaction.editReply({ components: [disabledRow] }).catch(() => {});
-    });
-  } catch (err) {
-    if (err instanceof RiotRateLimitError) {
-      await interaction.editReply(`Riot API está limitando peticiones. Inténtalo de nuevo en ${err.retryAfterSeconds}s.`);
-      return;
+    let entry = null;
+    try {
+      entry = await getRankedSoloEntry(user.puuid);
+    } catch (err) {
+      console.error(`Error obteniendo el rango de ${user.gameName}#${user.tagLine} para /leaderboard:`, err);
     }
-    if (err instanceof RiotApiError) {
-      console.error('Riot API error en /leaderboard:', err.status, err.body);
-      await interaction.editReply('Error consultando la API de Riot. Inténtalo más tarde.');
-      return;
-    }
-    console.error('Error inesperado en /leaderboard:', err);
-    await interaction.editReply('Ha ocurrido un error inesperado.');
+
+    results.push({ user, entry, score: rankScore(entry) });
   }
+
+  if (results.length === 0) {
+    await interaction.editReply('Nadie vinculado está en este servidor.');
+    return;
+  }
+
+  results.sort((a, b) => b.score - a.score);
+
+  const lines = results.map((r, index) => {
+    const medal = POSITION_MEDALS[index] || `#${index + 1}`;
+    const rankText = formatRankedEntry(r.entry);
+    const record = r.entry ? ` (${r.entry.wins}V - ${r.entry.losses}D)` : '';
+    return `${medal} <@${r.user.discordId}> — **${rankText}**${record}`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle('🏆 Leaderboard del servidor — Ranked Solo/Duo')
+    .setColor(0x5865f2)
+    .setDescription(lines.join('\n'));
+
+  await interaction.editReply({ embeds: [embed] });
 }
 
 module.exports = { data, execute };

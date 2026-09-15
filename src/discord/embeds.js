@@ -46,7 +46,7 @@ function formatKdaRatio(kills, deaths, assists) {
   return ((kills + assists) / deaths).toFixed(2);
 }
 
-function buildLeaderboardEmbeds({ gameName, tagLine }, summaries, ddragonVersion, rankedEntry) {
+function buildGameHistoryEmbeds({ gameName, tagLine }, summaries, ddragonVersion, rankedEntry) {
   const wins = summaries.filter((s) => s.win).length;
   const losses = summaries.length - wins;
   const rankLine = rankedEntry
@@ -156,4 +156,11 @@ function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion, rankedEntrie
   return embed;
 }
 
-module.exports = { buildLeaderboardEmbeds, buildMatchDetailEmbed, NUMBER_EMOJIS };
+module.exports = {
+  buildGameHistoryEmbeds,
+  buildMatchDetailEmbed,
+  NUMBER_EMOJIS,
+  formatRankedEntry,
+  formatDuration,
+  formatNumber,
+};

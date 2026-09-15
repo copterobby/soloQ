@@ -28,21 +28,65 @@ function getAllUsers() {
 }
 
 async function setUser(discordId, { gameName, tagLine, puuid }) {
+  const existing = store.users[discordId];
   store.users[discordId] = {
     gameName,
     tagLine,
     puuid,
-    lastSeenMatchId: null,
+    lastSeenMatchIds: {},
+    notificationsEnabled: existing?.notificationsEnabled ?? true,
+    streakType: null,
+    streakCount: 0,
     updatedAt: new Date().toISOString(),
   };
   await saveStore();
 }
 
-async function setLastSeenMatchId(discordId, matchId) {
-  if (!store.users[discordId]) return;
-  store.users[discordId].lastSeenMatchId = matchId;
-  store.users[discordId].updatedAt = new Date().toISOString();
+async function deleteUser(discordId) {
+  if (!store.users[discordId]) return false;
+  delete store.users[discordId];
   await saveStore();
+  return true;
+}
+
+// Older records only had a single `lastSeenMatchId` (implicitly ranked solo/duo, queue 420).
+function getLastSeenMatchId(user, queueId) {
+  const fromNewField = user.lastSeenMatchIds?.[queueId];
+  if (fromNewField) return fromNewField;
+  if (queueId === 420) return user.lastSeenMatchId || null;
+  return null;
+}
+
+async function setLastSeenMatchId(discordId, queueId, matchId) {
+  const user = store.users[discordId];
+  if (!user) return;
+  user.lastSeenMatchIds = { ...(user.lastSeenMatchIds || {}), [queueId]: matchId };
+  user.updatedAt = new Date().toISOString();
+  await saveStore();
+}
+
+async function setNotificationsEnabled(discordId, enabled) {
+  const user = store.users[discordId];
+  if (!user) return;
+  user.notificationsEnabled = enabled;
+  user.updatedAt = new Date().toISOString();
+  await saveStore();
+}
+
+// Returns the streak *after* recording this result, e.g. { type: 'W', count: 3 }.
+async function updateStreak(discordId, won) {
+  const user = store.users[discordId];
+  if (!user) return { type: won ? 'W' : 'L', count: 1 };
+
+  const type = won ? 'W' : 'L';
+  const count = user.streakType === type ? (user.streakCount || 0) + 1 : 1;
+
+  user.streakType = type;
+  user.streakCount = count;
+  user.updatedAt = new Date().toISOString();
+  await saveStore();
+
+  return { type, count };
 }
 
 function saveStore() {
@@ -56,4 +100,14 @@ function saveStore() {
   return writeQueue;
 }
 
-module.exports = { loadStore, getUser, getAllUsers, setUser, setLastSeenMatchId };
+module.exports = {
+  loadStore,
+  getUser,
+  getAllUsers,
+  setUser,
+  deleteUser,
+  getLastSeenMatchId,
+  setLastSeenMatchId,
+  setNotificationsEnabled,
+  updateStreak,
+};
