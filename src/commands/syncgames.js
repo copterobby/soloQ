@@ -23,12 +23,7 @@ async function collectNewMatchIds(user) {
 
   if (matchIds.length === 0) return { newMatchIds: [] };
 
-  if (!user.lastSeenMatchId) {
-    await userStore.setLastSeenMatchId(user.discordId, matchIds[0]);
-    return { newMatchIds: [] };
-  }
-
-  const lastSeenIndex = matchIds.indexOf(user.lastSeenMatchId);
+  const lastSeenIndex = user.lastSeenMatchId ? matchIds.indexOf(user.lastSeenMatchId) : -1;
   let newMatchIds;
   let truncated = false;
   if (lastSeenIndex === 0) {
