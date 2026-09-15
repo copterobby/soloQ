@@ -8,6 +8,7 @@ const {
 const { getRankedSoloMatches } = require('../riot/match');
 const { RiotRateLimitError, RiotApiError } = require('../riot/client');
 const { getLatestVersion } = require('../riot/ddragon');
+const { getRankedSoloEntry, getRankedSoloEntriesByPuuid } = require('../riot/league');
 const { buildLeaderboardEmbeds, buildMatchDetailEmbed, NUMBER_EMOJIS } = require('../discord/embeds');
 const userStore = require('../storage/userStore');
 
@@ -50,6 +51,15 @@ async function safeGetVersion() {
   }
 }
 
+async function safeGetRankedEntry(puuid) {
+  try {
+    return await getRankedSoloEntry(puuid);
+  } catch (err) {
+    console.error('No se pudo obtener el rango del jugador:', err);
+    return null;
+  }
+}
+
 async function execute(interaction) {
   const discordUser = interaction.options.getUser('usuario', true);
   const registeredUser = userStore.getUser(discordUser.id);
@@ -65,13 +75,14 @@ async function execute(interaction) {
   await interaction.deferReply();
 
   try {
-    const [matches, ddragonVersion] = await Promise.all([
+    const [matches, ddragonVersion, rankedEntry] = await Promise.all([
       getRankedSoloMatches(registeredUser.puuid, MATCH_COUNT),
       safeGetVersion(),
+      safeGetRankedEntry(registeredUser.puuid),
     ]);
 
     const summaries = matches.map((match) => summarizeMatch(match, registeredUser.puuid));
-    const embeds = buildLeaderboardEmbeds(registeredUser, summaries, ddragonVersion);
+    const embeds = buildLeaderboardEmbeds(registeredUser, summaries, ddragonVersion, rankedEntry);
     const matchesById = new Map(matches.map((match) => [match.metadata.matchId, match]));
 
     const row = new ActionRowBuilder().addComponents(
@@ -109,8 +120,10 @@ async function execute(interaction) {
         return;
       }
 
-      const detailEmbed = buildMatchDetailEmbed(match, registeredUser.puuid, ddragonVersion);
-      await buttonInteraction.reply({ embeds: [detailEmbed], ephemeral: true });
+      await buttonInteraction.deferReply({ ephemeral: true });
+      const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
+      const detailEmbed = buildMatchDetailEmbed(match, registeredUser.puuid, ddragonVersion, rankedEntries);
+      await buttonInteraction.editReply({ embeds: [detailEmbed] });
     });
 
     collector.on('end', async () => {

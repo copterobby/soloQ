@@ -7,6 +7,27 @@ const NEUTRAL_COLOR = 0x5865f2;
 
 const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
 
+const TIER_LABELS = {
+  IRON: 'Hierro',
+  BRONZE: 'Bronce',
+  SILVER: 'Plata',
+  GOLD: 'Oro',
+  PLATINUM: 'Platino',
+  EMERALD: 'Esmeralda',
+  DIAMOND: 'Diamante',
+  MASTER: 'Maestro',
+  GRANDMASTER: 'Gran Maestro',
+  CHALLENGER: 'Retador',
+};
+const NO_DIVISION_TIERS = new Set(['MASTER', 'GRANDMASTER', 'CHALLENGER']);
+
+function formatRankedEntry(entry) {
+  if (!entry) return 'Sin clasificar';
+  const tierLabel = TIER_LABELS[entry.tier] || entry.tier;
+  const divisionPart = NO_DIVISION_TIERS.has(entry.tier) ? '' : ` ${entry.rank}`;
+  return `${tierLabel}${divisionPart} · ${entry.leaguePoints} LP`;
+}
+
 function formatDuration(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -25,17 +46,20 @@ function formatKdaRatio(kills, deaths, assists) {
   return ((kills + assists) / deaths).toFixed(2);
 }
 
-function buildLeaderboardEmbeds({ gameName, tagLine }, summaries, ddragonVersion) {
+function buildLeaderboardEmbeds({ gameName, tagLine }, summaries, ddragonVersion, rankedEntry) {
   const wins = summaries.filter((s) => s.win).length;
   const losses = summaries.length - wins;
+  const rankLine = rankedEntry
+    ? `🏆 ${formatRankedEntry(rankedEntry)} (${rankedEntry.wins}V - ${rankedEntry.losses}D)`
+    : '🏆 Sin clasificar en Ranked Solo/Duo';
 
   const header = new EmbedBuilder()
     .setTitle(`Historial de ${gameName}#${tagLine}`)
     .setColor(NEUTRAL_COLOR)
     .setDescription(
       summaries.length === 0
-        ? 'No se encontraron partidas recientes de ranked solo/duo.'
-        : `**Ranked Solo/Duo** · Últimas ${summaries.length} partidas · **${wins}V - ${losses}D**\nPulsa un botón de abajo para ver el detalle completo de esa partida (los 10 jugadores).`
+        ? `${rankLine}\nNo se encontraron partidas recientes de ranked solo/duo.`
+        : `${rankLine}\n**Últimas ${summaries.length} partidas** · **${wins}V - ${losses}D**\nPulsa un botón de abajo para ver el detalle completo de esa partida (los 10 jugadores).`
     );
 
   if (ddragonVersion && summaries.length > 0) {
@@ -72,7 +96,7 @@ function buildLeaderboardEmbeds({ gameName, tagLine }, summaries, ddragonVersion
   return [header, ...matchEmbeds];
 }
 
-function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion) {
+function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion, rankedEntries = new Map()) {
   const { info } = match;
   const tracked = info.participants.find((p) => p.puuid === trackedPuuid);
   const durationSeconds = info.gameDuration;
@@ -112,9 +136,11 @@ function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion) {
       const name = p.riotIdGameName || p.summonerName || '???';
       const kp = teamKills > 0 ? Math.round(((p.kills + p.assists) / teamKills) * 100) : 0;
       const cs = p.totalMinionsKilled + p.neutralMinionsKilled;
+      const rankText = formatRankedEntry(rankedEntries.get(p.puuid));
 
       return (
         `${marker}**${name}** — ${p.championName} \`Nv.${p.champLevel}\`${topDamageIcon}\n` +
+        `🏆 ${rankText}\n` +
         `KDA **${p.kills}/${p.deaths}/${p.assists}** (${formatKdaRatio(p.kills, p.deaths, p.assists)}) · ` +
         `CS ${cs} · DMG ${formatNumber(p.totalDamageDealtToChampions)} · Oro ${formatNumber(p.goldEarned)} · ` +
         `KP ${kp}% · Visión ${p.visionScore}`

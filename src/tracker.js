@@ -3,13 +3,15 @@ const guildStore = require('./storage/guildStore');
 const { getRankedSoloMatchIds, getMatchById } = require('./riot/match');
 const { RiotRateLimitError } = require('./riot/client');
 const { getLatestVersion } = require('./riot/ddragon');
+const { getRankedSoloEntriesByPuuid } = require('./riot/league');
 const { buildMatchDetailEmbed } = require('./discord/embeds');
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const CHECK_COUNT = 5;
 
 async function postMatchNotification(client, user, match, ddragonVersion, channels) {
-  const embed = buildMatchDetailEmbed(match, user.puuid, ddragonVersion);
+  const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
+  const embed = buildMatchDetailEmbed(match, user.puuid, ddragonVersion, rankedEntries);
   const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
   const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
   const content = `🎮 <@${user.discordId}> ${resultText} una partida jugando **${tracked.championName}**`;

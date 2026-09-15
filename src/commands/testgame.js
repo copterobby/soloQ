@@ -3,6 +3,7 @@ const userStore = require('../storage/userStore');
 const { getRankedSoloMatchIds, getMatchById } = require('../riot/match');
 const { RiotRateLimitError, RiotApiError } = require('../riot/client');
 const { getLatestVersion } = require('../riot/ddragon');
+const { getRankedSoloEntriesByPuuid } = require('../riot/league');
 const { buildMatchDetailEmbed } = require('../discord/embeds');
 
 const OWNER_DISCORD_ID = '495739540644954127';
@@ -47,7 +48,8 @@ async function execute(interaction) {
 
     const tracked = match.info.participants.find((p) => p.puuid === registeredUser.puuid);
     const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
-    const embed = buildMatchDetailEmbed(match, registeredUser.puuid, ddragonVersion);
+    const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
+    const embed = buildMatchDetailEmbed(match, registeredUser.puuid, ddragonVersion, rankedEntries);
 
     await interaction.editReply({
       content: `🎮 [TEST] <@${discordUser.id}> ${resultText} una partida jugando **${tracked.championName}**`,
