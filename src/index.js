@@ -39,13 +39,33 @@ client.once(Events.ClientReady, (readyClient) => {
   startMatchTracker(readyClient);
 });
 
+const LOGIN_RETRY_BASE_MS = 10 * 1000;
+const LOGIN_RETRY_MAX_MS = 5 * 60 * 1000;
+
+async function loginWithRetry() {
+  let attempt = 0;
+  for (;;) {
+    try {
+      await client.login(config.discordToken);
+      return;
+    } catch (err) {
+      attempt += 1;
+      const delayMs = Math.min(LOGIN_RETRY_BASE_MS * 2 ** (attempt - 1), LOGIN_RETRY_MAX_MS);
+      console.error(
+        `Error al conectar con Discord (intento ${attempt}): ${err.message}. Reintentando en ${delayMs / 1000}s...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 async function main() {
   await userStore.loadStore();
   await guildStore.loadStore();
-  await client.login(config.discordToken);
+  await loginWithRetry();
 }
 
 main().catch((err) => {
-  console.error('Error al arrancar el bot:', err);
+  console.error('Error fatal al arrancar el bot:', err);
   process.exit(1);
 });
