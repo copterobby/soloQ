@@ -2,32 +2,13 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const userStore = require('../storage/userStore');
 const { getRankedSoloEntry } = require('../riot/league');
 const { formatRankedEntry } = require('../discord/embeds');
+const { rankScore } = require('../util/rankScore');
 
-const TIER_ORDER = [
-  'IRON',
-  'BRONZE',
-  'SILVER',
-  'GOLD',
-  'PLATINUM',
-  'EMERALD',
-  'DIAMOND',
-  'MASTER',
-  'GRANDMASTER',
-  'CHALLENGER',
-];
-const DIVISION_SCORE = { IV: 0, III: 1, II: 2, I: 3 };
 const POSITION_MEDALS = ['🥇', '🥈', '🥉'];
 
 const data = new SlashCommandBuilder()
   .setName('leaderboard')
   .setDescription('Leaderboard del servidor: compara el rango de ranked solo/duo de todos los vinculados');
-
-function rankScore(entry) {
-  if (!entry) return -1;
-  const tierIndex = TIER_ORDER.indexOf(entry.tier);
-  const divisionIndex = DIVISION_SCORE[entry.rank] ?? 0;
-  return tierIndex * 400 + divisionIndex * 100 + entry.leaguePoints;
-}
 
 async function execute(interaction) {
   await interaction.deferReply();

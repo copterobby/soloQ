@@ -16,6 +16,7 @@ const notifications = require('./commands/notifications');
 const trackqueue = require('./commands/trackqueue');
 const weekconfig = require('./commands/weekconfig');
 const weekcount = require('./commands/weekcount');
+const oneVsOne = require('./commands/1vs1');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -32,6 +33,7 @@ const commandModules = [
   trackqueue,
   weekconfig,
   weekcount,
+  oneVsOne,
 ];
 
 client.commands = new Collection();
