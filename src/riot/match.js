@@ -10,9 +10,9 @@ async function getMatchIdsByQueue(puuid, queueId, count = 5) {
 }
 
 // startTimeSeconds/endTimeSeconds are epoch seconds, per the Match-V5 API.
-async function getMatchIdsInRange(puuid, queueId, { startTimeSeconds, endTimeSeconds, count = 100 } = {}) {
+async function getMatchIdsInRange(puuid, queueId, { startTimeSeconds, endTimeSeconds, start = 0, count = 100 } = {}) {
   const path = `/lol/match/v5/matches/by-puuid/${puuid}/ids`;
-  const query = { queue: queueId, start: 0, count };
+  const query = { queue: queueId, start, count };
   if (startTimeSeconds) query.startTime = startTimeSeconds;
   if (endTimeSeconds) query.endTime = endTimeSeconds;
   return riotFetch(CONTINENT_BASE_URL, path, { query });
@@ -27,12 +27,24 @@ async function getRankedSoloMatchIds(puuid, count = 5) {
   return getMatchIdsByQueue(puuid, QUEUE_IDS.SOLO, count);
 }
 
-async function getMatchesByIds(matchIds) {
-  const matches = [];
-  for (const matchId of matchIds) {
-    matches.push(await getMatchById(matchId));
+// Fetches match details with a bounded number of requests in flight at once, instead of
+// one-at-a-time, to keep this fast without bursting past Riot's per-second rate limit.
+async function getMatchesByIds(matchIds, concurrency = 5) {
+  const results = new Array(matchIds.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    for (;;) {
+      const current = nextIndex;
+      nextIndex += 1;
+      if (current >= matchIds.length) return;
+      results[current] = await getMatchById(matchIds[current]);
+    }
   }
-  return matches;
+
+  const workers = Array.from({ length: Math.min(concurrency, matchIds.length) }, worker);
+  await Promise.all(workers);
+  return results;
 }
 
 async function getRankedSoloMatches(puuid, count = 5) {

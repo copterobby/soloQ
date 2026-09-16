@@ -17,6 +17,7 @@ const trackqueue = require('./commands/trackqueue');
 const weekconfig = require('./commands/weekconfig');
 const weekcount = require('./commands/weekcount');
 const oneVsOne = require('./commands/1vs1');
+const startsoloqchallenge = require('./commands/startsoloqchallenge');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -34,6 +35,7 @@ const commandModules = [
   weekconfig,
   weekcount,
   oneVsOne,
+  startsoloqchallenge,
 ];
 
 client.commands = new Collection();

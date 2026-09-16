@@ -1,6 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const userStore = require('../storage/userStore');
+const guildStore = require('../storage/guildStore');
 const { getRankedSoloEntry } = require('../riot/league');
+const { getSeasonRecord, formatSeasonStart } = require('../riot/seasonRecord');
+const { RiotRateLimitError, RiotApiError } = require('../riot/client');
 const { formatRankedEntry } = require('../discord/embeds');
 const { rankScore } = require('../util/rankScore');
 
@@ -19,19 +22,43 @@ async function execute(interaction) {
     return;
   }
 
-  const results = [];
-  for (const user of users) {
-    const member = await interaction.guild.members.fetch(user.discordId).catch(() => null);
-    if (!member) continue;
+  const startSeconds = guildStore.getChallengeStart(interaction.guildId);
+  const startText = formatSeasonStart(startSeconds);
 
-    let entry = null;
-    try {
-      entry = await getRankedSoloEntry(user.puuid);
-    } catch (err) {
-      console.error(`Error obteniendo el rango de ${user.gameName}#${user.tagLine} para /leaderboard:`, err);
+  let results;
+  try {
+    results = [];
+    for (const user of users) {
+      const member = await interaction.guild.members.fetch(user.discordId).catch(() => null);
+      if (!member) continue;
+
+      let entry = null;
+      let record = { wins: 0, losses: 0, games: 0, truncated: false };
+      try {
+        [entry, record] = await Promise.all([
+          getRankedSoloEntry(user.puuid),
+          getSeasonRecord(user.puuid, startSeconds),
+        ]);
+      } catch (err) {
+        if (err instanceof RiotRateLimitError) throw err; // deja que se propague: seguir sería mostrar datos falsos
+        console.error(`Error obteniendo el rango de ${user.gameName}#${user.tagLine} para /leaderboard:`, err);
+      }
+
+      results.push({ user, entry, record, score: rankScore(entry) });
     }
-
-    results.push({ user, entry, score: rankScore(entry) });
+  } catch (err) {
+    if (err instanceof RiotRateLimitError) {
+      await interaction.editReply(`Riot API está limitando peticiones. Inténtalo de nuevo en ${err.retryAfterSeconds}s.`);
+      return;
+    }
+    if (err instanceof RiotApiError) {
+      console.error('Riot API error en /leaderboard:', err.status, err.body);
+      await interaction.editReply('Error consultando la API de Riot. Inténtalo más tarde.');
+      return;
+    }
+    console.error('Error inesperado en /leaderboard:', err);
+    await interaction.editReply('Ha ocurrido un error inesperado.');
+    return;
   }
 
   if (results.length === 0) {
@@ -44,8 +71,10 @@ async function execute(interaction) {
   const lines = results.map((r, index) => {
     const medal = POSITION_MEDALS[index] || `#${index + 1}`;
     const rankText = formatRankedEntry(r.entry);
-    const record = r.entry ? ` (${r.entry.wins}V - ${r.entry.losses}D)` : '';
-    return `${medal} <@${r.user.discordId}> — **${rankText}**${record}`;
+    const truncatedMark = r.record.truncated ? ' ⚠️' : '';
+    const recordText =
+      r.record.games > 0 ? ` (${r.record.wins}V - ${r.record.losses}D desde el ${startText}${truncatedMark})` : '';
+    return `${medal} <@${r.user.discordId}> — **${rankText}**${recordText}`;
   });
 
   const embed = new EmbedBuilder()

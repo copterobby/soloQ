@@ -5,6 +5,7 @@ const config = require('../config');
 const DEFAULT_TRACKED_QUEUES = [420]; // Ranked Solo/Duo only, unless a server opts into more via /trackqueue
 const DEFAULT_WEEK_START_DAY = 1; // Lunes
 const DEFAULT_WEEK_START_HOUR = 9;
+const DEFAULT_CHALLENGE_START_SECONDS = Math.floor(new Date('2026-09-15T00:00:00').getTime() / 1000);
 
 let store = { guilds: {} };
 let writeQueue = Promise.resolve();
@@ -81,6 +82,19 @@ async function setWeekSchedule(guildId, day, hour) {
   await saveStore();
 }
 
+function getChallengeStart(guildId) {
+  return store.guilds[guildId]?.challengeStartSeconds ?? DEFAULT_CHALLENGE_START_SECONDS;
+}
+
+async function setChallengeStart(guildId, startSeconds) {
+  store.guilds[guildId] = {
+    ...(store.guilds[guildId] || {}),
+    challengeStartSeconds: startSeconds,
+    updatedAt: new Date().toISOString(),
+  };
+  await saveStore();
+}
+
 function getLastWeeklySummaryAt(guildId) {
   return store.guilds[guildId]?.lastWeeklySummaryAt || null;
 }
@@ -112,6 +126,8 @@ module.exports = {
   setTrackedQueues,
   getWeekSchedule,
   setWeekSchedule,
+  getChallengeStart,
+  setChallengeStart,
   getLastWeeklySummaryAt,
   setLastWeeklySummaryAt,
 };

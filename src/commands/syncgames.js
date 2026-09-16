@@ -6,9 +6,10 @@ const { RiotRateLimitError } = require('../riot/client');
 const { getLatestVersion } = require('../riot/ddragon');
 const { getRankedSoloEntriesByPuuid } = require('../riot/league');
 const { buildMatchDetailEmbed } = require('../discord/embeds');
+const { withLock } = require('../util/lock');
+const { buildHighlights } = require('../tracker');
 
 const SYNC_CHECK_COUNT = 20;
-const STREAK_CALLOUT_THRESHOLD = 3;
 
 const data = new SlashCommandBuilder()
   .setName('syncgames')
@@ -39,16 +40,6 @@ async function collectNewMatchIds(user, queueId) {
   }
 
   return { newMatchIds: newMatchIds.reverse(), latestMatchId: matchIds[0], truncated };
-}
-
-function buildHighlights(tracked, streak) {
-  const highlights = [];
-  if (tracked.pentaKills > 0) highlights.push('🌟 ¡PENTAKILL!');
-  if (streak.count >= STREAK_CALLOUT_THRESHOLD) {
-    const label = streak.type === 'W' ? 'victorias' : 'derrotas';
-    highlights.push(`🔥 Racha de ${streak.count} ${label} seguidas`);
-  }
-  return highlights;
 }
 
 async function execute(interaction) {
@@ -83,57 +74,75 @@ async function execute(interaction) {
 
   let totalPosted = 0;
   let anyTruncated = false;
+  let rateLimited = false;
   const errors = [];
 
-  for (const user of users) {
+  outer: for (const user of users) {
     const member = await interaction.guild.members.fetch(user.discordId).catch(() => null);
     if (!member) continue;
 
     for (const queueId of trackedQueues) {
-      const { newMatchIds, latestMatchId, truncated, error } = await collectNewMatchIds(user, queueId);
+      // Mismo bloqueo que usa el tracker automático para (usuario, cola): evita publicar
+      // la misma partida dos veces si el poller de 5 minutos corre justo a la vez.
+      const stoppedForRateLimit = await withLock(`${user.discordId}:${queueId}`, async () => {
+        const { newMatchIds, latestMatchId, truncated, error } = await collectNewMatchIds(user, queueId);
 
-      if (error) {
-        if (error instanceof RiotRateLimitError) {
-          errors.push(`${user.gameName}#${user.tagLine}: rate limit de Riot, reintenta en un rato`);
-        } else {
+        if (error) {
+          if (error instanceof RiotRateLimitError) {
+            errors.push(`${user.gameName}#${user.tagLine}: rate limit de Riot`);
+            return true;
+          }
           console.error(`Error comprobando a ${user.gameName}#${user.tagLine} en /syncgames:`, error);
           errors.push(`${user.gameName}#${user.tagLine}: error consultando Riot`);
+          return false;
         }
-        continue;
-      }
 
-      if (!newMatchIds || newMatchIds.length === 0) continue;
-      if (truncated) anyTruncated = true;
+        if (!newMatchIds || newMatchIds.length === 0) return false;
+        if (truncated) anyTruncated = true;
 
-      for (const matchId of newMatchIds) {
-        try {
-          const match = await getMatchById(matchId);
-          const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
-          const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
-          const streak = await userStore.updateStreak(user.discordId, tracked.win);
-          const highlights = buildHighlights(tracked, streak);
-          const highlightsText = highlights.length > 0 ? `\n${highlights.join(' · ')}` : '';
-          const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
-          const embed = buildMatchDetailEmbed(match, user.puuid, ddragonVersion, rankedEntries);
+        for (const matchId of newMatchIds) {
+          try {
+            const match = await getMatchById(matchId);
+            const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
+            const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
+            const streak = await userStore.updateStreak(user.discordId, queueId, tracked.win);
+            const highlights = buildHighlights(tracked, streak);
+            const highlightsText = highlights.length > 0 ? `\n${highlights.join(' · ')}` : '';
+            const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
+            const embed = buildMatchDetailEmbed(match, user.puuid, ddragonVersion, rankedEntries);
 
-          await channel.send({
-            content: `🎮 <@${user.discordId}> ${resultText} una partida jugando **${tracked.championName}**${highlightsText}`,
-            embeds: [embed],
-          });
-          totalPosted += 1;
-        } catch (err) {
-          console.error(`Error publicando la partida ${matchId} de ${user.gameName}#${user.tagLine}:`, err);
-          errors.push(`${user.gameName}#${user.tagLine}: error publicando una partida`);
+            await channel.send({
+              content: `🎮 <@${user.discordId}> ${resultText} una partida jugando **${tracked.championName}**${highlightsText}`,
+              embeds: [embed],
+            });
+            totalPosted += 1;
+          } catch (err) {
+            if (err instanceof RiotRateLimitError) {
+              errors.push(`${user.gameName}#${user.tagLine}: rate limit de Riot a mitad de sincronizar`);
+              return true;
+            }
+            console.error(`Error publicando la partida ${matchId} de ${user.gameName}#${user.tagLine}:`, err);
+            errors.push(`${user.gameName}#${user.tagLine}: error publicando una partida`);
+          }
         }
-      }
 
-      if (latestMatchId) {
-        await userStore.setLastSeenMatchId(user.discordId, queueId, latestMatchId);
+        if (latestMatchId) {
+          await userStore.setLastSeenMatchId(user.discordId, queueId, latestMatchId);
+        }
+        return false;
+      });
+
+      if (stoppedForRateLimit) {
+        rateLimited = true;
+        break outer;
       }
     }
   }
 
-  const summary = [`✅ Sincronización completa: ${totalPosted} partida(s) publicada(s) en ${channel}.`];
+  const summary = [`✅ Sincronización ${rateLimited ? 'parcial' : 'completa'}: ${totalPosted} partida(s) publicada(s) en ${channel}.`];
+  if (rateLimited) {
+    summary.push('⚠️ Riot empezó a limitar peticiones a mitad de la sincronización — espera un par de minutos y vuelve a ejecutar `/syncgames` para terminar.');
+  }
   if (anyTruncated) {
     summary.push(
       `⚠️ Algún usuario tenía más de ${SYNC_CHECK_COUNT} partidas pendientes; solo se muestran las últimas ${SYNC_CHECK_COUNT}.`

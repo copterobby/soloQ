@@ -147,9 +147,12 @@ function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion, rankedEntrie
       );
     });
 
+    const value = lines.join('\n\n');
     embed.addFields({
       name: `${label} — ${resultLabel}`,
-      value: lines.join('\n\n'),
+      // Discord corta los valores de campo en 1024 caracteres; con nombres/rangos largos
+      // en los 5 jugadores esto puede rozar el límite, así que recortamos con margen.
+      value: value.length > 1024 ? `${value.slice(0, 1000)}…` : value,
     });
   }
 

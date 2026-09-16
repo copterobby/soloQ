@@ -13,6 +13,7 @@ const trackqueue = require('./commands/trackqueue');
 const weekconfig = require('./commands/weekconfig');
 const weekcount = require('./commands/weekcount');
 const oneVsOne = require('./commands/1vs1');
+const startsoloqchallenge = require('./commands/startsoloqchallenge');
 
 const commands = [
   loluser,
@@ -28,6 +29,7 @@ const commands = [
   weekconfig,
   weekcount,
   oneVsOne,
+  startsoloqchallenge,
 ].map((command) => command.data.toJSON());
 
 const rest = new REST().setToken(config.discordToken);

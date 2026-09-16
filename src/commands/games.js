@@ -121,9 +121,14 @@ async function execute(interaction) {
       }
 
       await buttonInteraction.deferReply({ ephemeral: true });
-      const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
-      const detailEmbed = buildMatchDetailEmbed(match, registeredUser.puuid, ddragonVersion, rankedEntries);
-      await buttonInteraction.editReply({ embeds: [detailEmbed] });
+      try {
+        const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
+        const detailEmbed = buildMatchDetailEmbed(match, registeredUser.puuid, ddragonVersion, rankedEntries);
+        await buttonInteraction.editReply({ embeds: [detailEmbed] });
+      } catch (err) {
+        console.error('Error mostrando el detalle de la partida en /games:', err);
+        await buttonInteraction.editReply('Ha ocurrido un error mostrando el detalle de esta partida.').catch(() => {});
+      }
     });
 
     collector.on('end', async () => {

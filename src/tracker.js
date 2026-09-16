@@ -5,8 +5,9 @@ const { RiotRateLimitError } = require('./riot/client');
 const { getLatestVersion } = require('./riot/ddragon');
 const { getRankedSoloEntriesByPuuid } = require('./riot/league');
 const { buildMatchDetailEmbed } = require('./discord/embeds');
+const { withLock } = require('./util/lock');
 
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
+const POLL_INTERVAL_MS = 2 * 60 * 1000;
 const CHECK_COUNT = 5;
 const STREAK_CALLOUT_THRESHOLD = 3;
 
@@ -58,66 +59,67 @@ async function postMatchNotification(client, user, match, ddragonVersion, channe
 }
 
 async function checkUserQueue(client, user, queueId, ddragonVersion) {
-  let matchIds;
-  try {
-    matchIds = await getMatchIdsByQueue(user.puuid, queueId, CHECK_COUNT);
-  } catch (err) {
-    if (err instanceof RiotRateLimitError) {
-      console.warn(`Rate limited comprobando a ${user.gameName}#${user.tagLine} (cola ${queueId}); se reintenta luego.`);
-    } else {
-      console.error(`Error comprobando partidas de ${user.gameName}#${user.tagLine} (cola ${queueId}):`, err);
-    }
-    return;
-  }
-
-  if (matchIds.length === 0) return;
-
-  const lastSeen = userStore.getLastSeenMatchId(user, queueId);
-
-  if (!lastSeen) {
-    // Primera vez que vemos a este usuario en esta cola: fijamos la base sin notificar su histórico.
-    await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
-    return;
-  }
-
-  const lastSeenIndex = matchIds.indexOf(lastSeen);
-  let newMatchIds;
-  if (lastSeenIndex === 0) {
-    newMatchIds = [];
-  } else if (lastSeenIndex === -1) {
-    // Llevaba más de CHECK_COUNT partidas sin comprobarse; avisamos solo de la última para no hacer spam.
-    newMatchIds = [matchIds[0]];
-  } else {
-    newMatchIds = matchIds.slice(0, lastSeenIndex);
-  }
-
-  if (newMatchIds.length === 0) return;
-
-  if (user.notificationsEnabled === false) {
-    await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
-    return;
-  }
-
-  const channels = await resolveGuildChannelsForUser(client, user.discordId, queueId);
-  if (channels.length === 0) {
-    await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
-    return;
-  }
-
-  const chronological = [...newMatchIds].reverse();
-  for (const matchId of chronological) {
+  // Bloquea este (usuario, cola) mientras dura todo el ciclo de lectura-decisión-escritura,
+  // para que el tracker automático y /syncgames nunca procesen las mismas partidas a la vez.
+  await withLock(`${user.discordId}:${queueId}`, async () => {
+    let matchIds;
     try {
-      const match = await getMatchById(matchId);
-      const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
-      const streak = await userStore.updateStreak(user.discordId, tracked.win);
-      const highlights = buildHighlights(tracked, streak);
-      await postMatchNotification(client, user, match, ddragonVersion, channels, highlights);
+      matchIds = await getMatchIdsByQueue(user.puuid, queueId, CHECK_COUNT);
     } catch (err) {
-      console.error(`Error obteniendo/publicando la partida ${matchId} de ${user.gameName}#${user.tagLine}:`, err);
+      if (err instanceof RiotRateLimitError) {
+        console.warn(`Rate limited comprobando a ${user.gameName}#${user.tagLine} (cola ${queueId}); se reintenta luego.`);
+      } else {
+        console.error(`Error comprobando partidas de ${user.gameName}#${user.tagLine} (cola ${queueId}):`, err);
+      }
+      return;
     }
-  }
 
-  await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
+    if (matchIds.length === 0) return;
+
+    const lastSeen = userStore.getLastSeenMatchId(user, queueId);
+
+    if (!lastSeen) {
+      // Primera vez que vemos a este usuario en esta cola: fijamos la base sin notificar su histórico.
+      await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
+      return;
+    }
+
+    const lastSeenIndex = matchIds.indexOf(lastSeen);
+    let newMatchIds;
+    if (lastSeenIndex === 0) {
+      newMatchIds = [];
+    } else if (lastSeenIndex === -1) {
+      // Llevaba más de CHECK_COUNT partidas sin comprobarse; avisamos solo de la última para no hacer spam.
+      newMatchIds = [matchIds[0]];
+    } else {
+      newMatchIds = matchIds.slice(0, lastSeenIndex);
+    }
+
+    if (newMatchIds.length === 0) return;
+
+    const shouldNotify = user.notificationsEnabled !== false;
+    const channels = shouldNotify ? await resolveGuildChannelsForUser(client, user.discordId, queueId) : [];
+
+    const chronological = [...newMatchIds].reverse();
+    for (const matchId of chronological) {
+      try {
+        const match = await getMatchById(matchId);
+        const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
+        // La racha se actualiza siempre, aunque el usuario tenga los avisos apagados o no
+        // se resuelva ningún canal — refleja los resultados reales, no si se llegó a avisar.
+        const streak = await userStore.updateStreak(user.discordId, queueId, tracked.win);
+
+        if (channels.length > 0) {
+          const highlights = buildHighlights(tracked, streak);
+          await postMatchNotification(client, user, match, ddragonVersion, channels, highlights);
+        }
+      } catch (err) {
+        console.error(`Error procesando la partida ${matchId} de ${user.gameName}#${user.tagLine}:`, err);
+      }
+    }
+
+    await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
+  });
 }
 
 async function checkUser(client, user, ddragonVersion, activeQueues) {
@@ -155,4 +157,4 @@ function startMatchTracker(client) {
   }, POLL_INTERVAL_MS);
 }
 
-module.exports = { startMatchTracker };
+module.exports = { startMatchTracker, buildHighlights, STREAK_CALLOUT_THRESHOLD };

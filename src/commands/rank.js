@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const userStore = require('../storage/userStore');
+const guildStore = require('../storage/guildStore');
 const { getRankedSoloEntry } = require('../riot/league');
+const { getSeasonRecord, formatSeasonStart } = require('../riot/seasonRecord');
 const { RiotRateLimitError, RiotApiError } = require('../riot/client');
 const { formatRankedEntry } = require('../discord/embeds');
 
@@ -26,18 +28,25 @@ async function execute(interaction) {
   await interaction.deferReply();
 
   try {
-    const entry = await getRankedSoloEntry(registeredUser.puuid);
-    const winrate = entry && entry.wins + entry.losses > 0
-      ? Math.round((entry.wins / (entry.wins + entry.losses)) * 100)
-      : null;
+    const startSeconds = guildStore.getChallengeStart(interaction.guildId);
+    const startText = formatSeasonStart(startSeconds);
+
+    const [entry, record] = await Promise.all([
+      getRankedSoloEntry(registeredUser.puuid),
+      getSeasonRecord(registeredUser.puuid, startSeconds),
+    ]);
+
+    const winrate = record.games > 0 ? Math.round((record.wins / record.games) * 100) : null;
+    const truncatedNote = record.truncated ? ' ⚠️ (más de 300 partidas, mostrando las más recientes)' : '';
 
     const embed = new EmbedBuilder()
       .setTitle(`${registeredUser.gameName}#${registeredUser.tagLine}`)
       .setColor(0x5865f2)
       .setDescription(
-        entry
-          ? `🏆 **${formatRankedEntry(entry)}**\n${entry.wins}V - ${entry.losses}D (${winrate}% winrate)`
-          : '🏆 Sin clasificar en Ranked Solo/Duo'
+        `🏆 **${formatRankedEntry(entry)}**\n` +
+          (record.games > 0
+            ? `Desde el ${startText}: ${record.wins}V - ${record.losses}D (${winrate}% winrate)${truncatedNote}`
+            : `Sin partidas de ranked solo/duo desde el ${startText}`)
       );
 
     await interaction.editReply({ embeds: [embed] });
