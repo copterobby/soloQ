@@ -105,6 +105,16 @@ async function setLastWeeklySummaryAt(guildId, isoTimestamp) {
   await saveStore();
 }
 
+function getLastMonthlySummaryAt(guildId) {
+  return store.guilds[guildId]?.lastMonthlySummaryAt || null;
+}
+
+async function setLastMonthlySummaryAt(guildId, isoTimestamp) {
+  if (!store.guilds[guildId]) return;
+  store.guilds[guildId].lastMonthlySummaryAt = isoTimestamp;
+  await saveStore();
+}
+
 function saveStore() {
   writeQueue = writeQueue.then(async () => {
     const dir = path.dirname(config.guildDataFilePath);
@@ -130,4 +140,6 @@ module.exports = {
   setChallengeStart,
   getLastWeeklySummaryAt,
   setLastWeeklySummaryAt,
+  getLastMonthlySummaryAt,
+  setLastMonthlySummaryAt,
 };

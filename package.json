@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "register-commands": "node src/deploy-commands.js",
-    "register-commands:global": "node src/deploy-commands.js --global"
+    "register-commands:global": "node src/deploy-commands.js --global",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18.17.0"

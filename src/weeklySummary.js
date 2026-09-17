@@ -5,7 +5,10 @@ const { getMatchIdsInRange, getMatchById } = require('./riot/match');
 const { getRankedSoloEntry } = require('./riot/league');
 const { formatRankedEntry } = require('./discord/embeds');
 const { getMostRecentWeekStart } = require('./util/weekSchedule');
+const botStatus = require('./botStatus');
+const { notifyOwner } = require('./util/ownerAlert');
 
+const TRACKER_KEY = 'weeklySummary';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const MAX_MATCHES_PER_USER_PER_QUEUE = 30;
 
@@ -99,14 +102,27 @@ function shouldPostNow(guild) {
 }
 
 async function checkWeeklySummaries(client) {
-  const guilds = guildStore.getAllTrackedGuilds();
-  for (const guild of guilds) {
-    if (!shouldPostNow(guild)) continue;
-    try {
-      await postWeeklySummaryForGuild(client, guild);
-    } catch (err) {
-      console.error(`Error publicando el resumen semanal del guild ${guild.guildId}:`, err);
+  try {
+    const guilds = guildStore.getAllTrackedGuilds();
+    for (const guild of guilds) {
+      if (!shouldPostNow(guild)) continue;
+      try {
+        await postWeeklySummaryForGuild(client, guild);
+      } catch (err) {
+        console.error(`Error publicando el resumen semanal del guild ${guild.guildId}:`, err);
+      }
     }
+
+    botStatus.recordCycle(TRACKER_KEY, { ok: true });
+  } catch (err) {
+    const shouldAlert = botStatus.recordCycle(TRACKER_KEY, { ok: false, error: err });
+    if (shouldAlert) {
+      await notifyOwner(
+        client,
+        `⚠️ El resumen semanal lleva ${botStatus.FAILURE_ALERT_THRESHOLD} ciclos seguidos fallando. Último error: ${err.message}`
+      );
+    }
+    throw err;
   }
 }
 

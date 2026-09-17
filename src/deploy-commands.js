@@ -1,36 +1,8 @@
 const { REST, Routes } = require('discord.js');
 const config = require('./config');
-const loluser = require('./commands/loluser');
-const games = require('./commands/games');
-const leaderboard = require('./commands/leaderboard');
-const trackchannel = require('./commands/trackchannel');
-const testgame = require('./commands/testgame');
-const syncgames = require('./commands/syncgames');
-const unlink = require('./commands/unlink');
-const rank = require('./commands/rank');
-const notifications = require('./commands/notifications');
-const trackqueue = require('./commands/trackqueue');
-const weekconfig = require('./commands/weekconfig');
-const weekcount = require('./commands/weekcount');
-const oneVsOne = require('./commands/1vs1');
-const startsoloqchallenge = require('./commands/startsoloqchallenge');
+const { commandModules } = require('./commands/registry');
 
-const commands = [
-  loluser,
-  games,
-  leaderboard,
-  trackchannel,
-  testgame,
-  syncgames,
-  unlink,
-  rank,
-  notifications,
-  trackqueue,
-  weekconfig,
-  weekcount,
-  oneVsOne,
-  startsoloqchallenge,
-].map((command) => command.data.toJSON());
+const commands = commandModules.map((command) => command.data.toJSON());
 
 const rest = new REST().setToken(config.discordToken);
 

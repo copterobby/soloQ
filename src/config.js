@@ -13,6 +13,7 @@ module.exports = {
   discordToken: process.env.DISCORD_TOKEN,
   discordClientId: process.env.DISCORD_CLIENT_ID,
   discordGuildId: process.env.DISCORD_GUILD_ID || null,
+  ownerDiscordId: process.env.OWNER_DISCORD_ID || null,
   riotApiKey: process.env.RIOT_API_KEY,
   riotPlatformRegion: process.env.RIOT_PLATFORM_REGION || 'euw1',
   riotContinentRegion: process.env.RIOT_CONTINENT_REGION || 'europe',

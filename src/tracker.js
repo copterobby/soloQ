@@ -6,6 +6,10 @@ const { getLatestVersion } = require('./riot/ddragon');
 const { getRankedSoloEntriesByPuuid } = require('./riot/league');
 const { buildMatchDetailEmbed } = require('./discord/embeds');
 const { withLock } = require('./util/lock');
+const botStatus = require('./botStatus');
+const { notifyOwner } = require('./util/ownerAlert');
+
+const TRACKER_KEY = 'lol';
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000;
 const CHECK_COUNT = 5;
@@ -123,23 +127,36 @@ async function checkUser(client, guildId, user, ddragonVersion, activeQueues) {
 }
 
 async function checkAllUsers(client) {
-  const guilds = guildStore.getAllTrackedGuilds();
-  if (guilds.length === 0) return;
-
-  let ddragonVersion = null;
   try {
-    ddragonVersion = await getLatestVersion();
-  } catch (err) {
-    console.error('No se pudo obtener la versión de Data Dragon para el tracker:', err);
-  }
+    const guilds = guildStore.getAllTrackedGuilds();
+    if (guilds.length > 0) {
+      let ddragonVersion = null;
+      try {
+        ddragonVersion = await getLatestVersion();
+      } catch (err) {
+        console.error('No se pudo obtener la versión de Data Dragon para el tracker:', err);
+      }
 
-  for (const guild of guilds) {
-    const users = userStore.getAllUsers(guild.guildId);
-    if (users.length === 0) continue;
+      for (const guild of guilds) {
+        const users = userStore.getAllUsers(guild.guildId);
+        if (users.length === 0) continue;
 
-    for (const user of users) {
-      await checkUser(client, guild.guildId, user, ddragonVersion, guild.trackedQueues);
+        for (const user of users) {
+          await checkUser(client, guild.guildId, user, ddragonVersion, guild.trackedQueues);
+        }
+      }
     }
+
+    botStatus.recordCycle(TRACKER_KEY, { ok: true });
+  } catch (err) {
+    const shouldAlert = botStatus.recordCycle(TRACKER_KEY, { ok: false, error: err });
+    if (shouldAlert) {
+      await notifyOwner(
+        client,
+        `⚠️ El tracker de League lleva ${botStatus.FAILURE_ALERT_THRESHOLD} ciclos seguidos fallando. Último error: ${err.message}`
+      );
+    }
+    throw err;
   }
 }
 

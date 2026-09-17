@@ -4,39 +4,10 @@ const userStore = require('./storage/userStore');
 const guildStore = require('./storage/guildStore');
 const { startMatchTracker } = require('./tracker');
 const { startWeeklySummary } = require('./weeklySummary');
-const loluser = require('./commands/loluser');
-const games = require('./commands/games');
-const leaderboard = require('./commands/leaderboard');
-const trackchannel = require('./commands/trackchannel');
-const testgame = require('./commands/testgame');
-const syncgames = require('./commands/syncgames');
-const unlink = require('./commands/unlink');
-const rank = require('./commands/rank');
-const notifications = require('./commands/notifications');
-const trackqueue = require('./commands/trackqueue');
-const weekconfig = require('./commands/weekconfig');
-const weekcount = require('./commands/weekcount');
-const oneVsOne = require('./commands/1vs1');
-const startsoloqchallenge = require('./commands/startsoloqchallenge');
+const { startMonthlySummary } = require('./monthlySummary');
+const { commandModules } = require('./commands/registry');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-const commandModules = [
-  loluser,
-  games,
-  leaderboard,
-  trackchannel,
-  testgame,
-  syncgames,
-  unlink,
-  rank,
-  notifications,
-  trackqueue,
-  weekconfig,
-  weekcount,
-  oneVsOne,
-  startsoloqchallenge,
-];
 
 client.commands = new Collection();
 for (const command of commandModules) {
@@ -66,6 +37,7 @@ client.once(Events.ClientReady, (readyClient) => {
   console.log(`Bot conectado como ${readyClient.user.tag}`);
   startMatchTracker(readyClient);
   startWeeklySummary(readyClient);
+  startMonthlySummary(readyClient);
 });
 
 const LOGIN_RETRY_BASE_MS = 10 * 1000;
