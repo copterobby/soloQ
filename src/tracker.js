@@ -11,24 +11,17 @@ const POLL_INTERVAL_MS = 2 * 60 * 1000;
 const CHECK_COUNT = 5;
 const STREAK_CALLOUT_THRESHOLD = 3;
 
-async function resolveGuildChannelsForUser(client, discordId, queueId) {
-  const guilds = guildStore.getAllTrackedGuilds().filter((g) => g.trackedQueues.includes(queueId));
-  const channels = [];
+async function resolveGuildChannel(client, guildId, queueId) {
+  const trackedQueues = guildStore.getTrackedQueues(guildId);
+  if (!trackedQueues.includes(queueId)) return null;
 
-  for (const { guildId, channelId } of guilds) {
-    const guild = await client.guilds.fetch(guildId).catch(() => null);
-    if (!guild) continue;
+  const channelId = guildStore.getTrackedChannelId(guildId);
+  if (!channelId) return null;
 
-    const member = await guild.members.fetch(discordId).catch(() => null);
-    if (!member) continue;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return null;
 
-    const channel = await client.channels.fetch(channelId).catch(() => null);
-    if (!channel || !channel.isTextBased()) continue;
-
-    channels.push(channel);
-  }
-
-  return channels;
+  return channel;
 }
 
 function buildHighlights(tracked, streak) {
@@ -58,10 +51,10 @@ async function postMatchNotification(client, user, match, ddragonVersion, channe
   }
 }
 
-async function checkUserQueue(client, user, queueId, ddragonVersion) {
-  // Bloquea este (usuario, cola) mientras dura todo el ciclo de lectura-decisión-escritura,
+async function checkUserQueue(client, guildId, user, queueId, ddragonVersion) {
+  // Bloquea este (guild, usuario, cola) mientras dura todo el ciclo de lectura-decisión-escritura,
   // para que el tracker automático y /syncgames nunca procesen las mismas partidas a la vez.
-  await withLock(`${user.discordId}:${queueId}`, async () => {
+  await withLock(`${guildId}:${user.discordId}:${queueId}`, async () => {
     let matchIds;
     try {
       matchIds = await getMatchIdsByQueue(user.puuid, queueId, CHECK_COUNT);
@@ -80,7 +73,7 @@ async function checkUserQueue(client, user, queueId, ddragonVersion) {
 
     if (!lastSeen) {
       // Primera vez que vemos a este usuario en esta cola: fijamos la base sin notificar su histórico.
-      await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
+      await userStore.setLastSeenMatchId(guildId, user.discordId, queueId, matchIds[0]);
       return;
     }
 
@@ -98,7 +91,8 @@ async function checkUserQueue(client, user, queueId, ddragonVersion) {
     if (newMatchIds.length === 0) return;
 
     const shouldNotify = user.notificationsEnabled !== false;
-    const channels = shouldNotify ? await resolveGuildChannelsForUser(client, user.discordId, queueId) : [];
+    const channel = shouldNotify ? await resolveGuildChannel(client, guildId, queueId) : null;
+    const channels = channel ? [channel] : [];
 
     const chronological = [...newMatchIds].reverse();
     for (const matchId of chronological) {
@@ -107,7 +101,7 @@ async function checkUserQueue(client, user, queueId, ddragonVersion) {
         const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
         // La racha se actualiza siempre, aunque el usuario tenga los avisos apagados o no
         // se resuelva ningún canal — refleja los resultados reales, no si se llegó a avisar.
-        const streak = await userStore.updateStreak(user.discordId, queueId, tracked.win);
+        const streak = await userStore.updateStreak(guildId, user.discordId, queueId, tracked.win);
 
         if (channels.length > 0) {
           const highlights = buildHighlights(tracked, streak);
@@ -118,25 +112,19 @@ async function checkUserQueue(client, user, queueId, ddragonVersion) {
       }
     }
 
-    await userStore.setLastSeenMatchId(user.discordId, queueId, matchIds[0]);
+    await userStore.setLastSeenMatchId(guildId, user.discordId, queueId, matchIds[0]);
   });
 }
 
-async function checkUser(client, user, ddragonVersion, activeQueues) {
+async function checkUser(client, guildId, user, ddragonVersion, activeQueues) {
   for (const queueId of activeQueues) {
-    await checkUserQueue(client, user, queueId, ddragonVersion);
+    await checkUserQueue(client, guildId, user, queueId, ddragonVersion);
   }
 }
 
 async function checkAllUsers(client) {
-  const users = userStore.getAllUsers();
-  if (users.length === 0) return;
-
   const guilds = guildStore.getAllTrackedGuilds();
   if (guilds.length === 0) return;
-
-  const activeQueues = [...new Set(guilds.flatMap((g) => g.trackedQueues))];
-  if (activeQueues.length === 0) return;
 
   let ddragonVersion = null;
   try {
@@ -145,8 +133,13 @@ async function checkAllUsers(client) {
     console.error('No se pudo obtener la versión de Data Dragon para el tracker:', err);
   }
 
-  for (const user of users) {
-    await checkUser(client, user, ddragonVersion, activeQueues);
+  for (const guild of guilds) {
+    const users = userStore.getAllUsers(guild.guildId);
+    if (users.length === 0) continue;
+
+    for (const user of users) {
+      await checkUser(client, guild.guildId, user, ddragonVersion, guild.trackedQueues);
+    }
   }
 }
 

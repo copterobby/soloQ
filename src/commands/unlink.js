@@ -21,13 +21,13 @@ async function execute(interaction) {
     return;
   }
 
-  const existing = userStore.getUser(target.id);
+  const existing = userStore.getUser(interaction.guildId, target.id);
   if (!existing) {
     await interaction.reply({ content: `${target} no tiene ninguna cuenta vinculada.`, ephemeral: true });
     return;
   }
 
-  await userStore.deleteUser(target.id);
+  await userStore.deleteUser(interaction.guildId, target.id);
   await interaction.reply(`✅ Se ha desvinculado a ${target} de **${existing.gameName}#${existing.tagLine}**.`);
 }
 

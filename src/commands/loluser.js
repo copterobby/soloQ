@@ -36,7 +36,7 @@ async function execute(interaction) {
 
   try {
     const account = await getAccountByRiotId(gameName, tagLine);
-    await userStore.setUser(discordUser.id, {
+    await userStore.setUser(interaction.guildId, discordUser.id, {
       gameName: account.gameName,
       tagLine: account.tagLine,
       puuid: account.puuid,

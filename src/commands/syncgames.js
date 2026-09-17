@@ -59,7 +59,7 @@ async function execute(interaction) {
 
   const trackedQueues = guildStore.getTrackedQueues(interaction.guildId);
 
-  const users = userStore.getAllUsers();
+  const users = userStore.getAllUsers(interaction.guildId);
   if (users.length === 0) {
     await interaction.editReply('No hay ningún usuario vinculado con `/loluser` todavía.');
     return;
@@ -78,13 +78,10 @@ async function execute(interaction) {
   const errors = [];
 
   outer: for (const user of users) {
-    const member = await interaction.guild.members.fetch(user.discordId).catch(() => null);
-    if (!member) continue;
-
     for (const queueId of trackedQueues) {
-      // Mismo bloqueo que usa el tracker automático para (usuario, cola): evita publicar
+      // Mismo bloqueo que usa el tracker automático para (guild, usuario, cola): evita publicar
       // la misma partida dos veces si el poller de 5 minutos corre justo a la vez.
-      const stoppedForRateLimit = await withLock(`${user.discordId}:${queueId}`, async () => {
+      const stoppedForRateLimit = await withLock(`${interaction.guildId}:${user.discordId}:${queueId}`, async () => {
         const { newMatchIds, latestMatchId, truncated, error } = await collectNewMatchIds(user, queueId);
 
         if (error) {
@@ -105,7 +102,7 @@ async function execute(interaction) {
             const match = await getMatchById(matchId);
             const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
             const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
-            const streak = await userStore.updateStreak(user.discordId, queueId, tracked.win);
+            const streak = await userStore.updateStreak(interaction.guildId, user.discordId, queueId, tracked.win);
             const highlights = buildHighlights(tracked, streak);
             const highlightsText = highlights.length > 0 ? `\n${highlights.join(' · ')}` : '';
             const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
@@ -127,7 +124,7 @@ async function execute(interaction) {
         }
 
         if (latestMatchId) {
-          await userStore.setLastSeenMatchId(user.discordId, queueId, latestMatchId);
+          await userStore.setLastSeenMatchId(interaction.guildId, user.discordId, queueId, latestMatchId);
         }
         return false;
       });

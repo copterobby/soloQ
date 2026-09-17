@@ -18,30 +18,58 @@ async function loadStore() {
     throw err;
   }
 
+  let migrated = false;
+
+  // Migración única: el formato antiguo guardaba los usuarios en plano
+  // (store.users[discordId]), global para todos los servidores. Los movemos
+  // bajo el servidor configurado en DISCORD_GUILD_ID, que es el único en el
+  // que corrió el bot antes de que los datos de usuario se aislaran por servidor.
+  const legacyEntries = Object.entries(store.users).filter(
+    ([, value]) => value && typeof value.puuid === 'string'
+  );
+  if (legacyEntries.length > 0) {
+    if (!config.discordGuildId) {
+      console.warn(
+        `Se encontraron ${legacyEntries.length} usuario(s) en el formato antiguo (sin servidor asociado), pero DISCORD_GUILD_ID no está configurado. ` +
+          'Añade DISCORD_GUILD_ID a tu .env con el ID del servidor donde se vincularon estas cuentas y reinicia el bot para migrarlas.'
+      );
+    } else {
+      store.users[config.discordGuildId] = store.users[config.discordGuildId] || {};
+      for (const [discordId, data] of legacyEntries) {
+        store.users[config.discordGuildId][discordId] = data;
+        delete store.users[discordId];
+      }
+      migrated = true;
+      console.log(`Migrados ${legacyEntries.length} usuario(s) al servidor ${config.discordGuildId}.`);
+    }
+  }
+
   // Migración única de registros antiguos: `lastSeenMatchId` (implícitamente cola 420)
   // pasa a vivir dentro de `lastSeenMatchIds`, igual que las demás colas.
-  let migrated = false;
-  for (const user of Object.values(store.users)) {
-    if (user.lastSeenMatchId && !user.lastSeenMatchIds) {
-      user.lastSeenMatchIds = { 420: user.lastSeenMatchId };
-      delete user.lastSeenMatchId;
-      migrated = true;
+  for (const guildUsers of Object.values(store.users)) {
+    for (const user of Object.values(guildUsers)) {
+      if (user.lastSeenMatchId && !user.lastSeenMatchIds) {
+        user.lastSeenMatchIds = { 420: user.lastSeenMatchId };
+        delete user.lastSeenMatchId;
+        migrated = true;
+      }
     }
   }
   if (migrated) await saveStore();
 }
 
-function getUser(discordId) {
-  return store.users[discordId] || null;
+function getUser(guildId, discordId) {
+  return store.users[guildId]?.[discordId] || null;
 }
 
-function getAllUsers() {
-  return Object.entries(store.users).map(([discordId, data]) => ({ discordId, ...data }));
+function getAllUsers(guildId) {
+  return Object.entries(store.users[guildId] || {}).map(([discordId, data]) => ({ discordId, ...data }));
 }
 
-async function setUser(discordId, { gameName, tagLine, puuid }) {
-  const existing = store.users[discordId];
-  store.users[discordId] = {
+async function setUser(guildId, discordId, { gameName, tagLine, puuid }) {
+  store.users[guildId] = store.users[guildId] || {};
+  const existing = store.users[guildId][discordId];
+  store.users[guildId][discordId] = {
     gameName,
     tagLine,
     puuid,
@@ -53,9 +81,9 @@ async function setUser(discordId, { gameName, tagLine, puuid }) {
   await saveStore();
 }
 
-async function deleteUser(discordId) {
-  if (!store.users[discordId]) return false;
-  delete store.users[discordId];
+async function deleteUser(guildId, discordId) {
+  if (!store.users[guildId]?.[discordId]) return false;
+  delete store.users[guildId][discordId];
   await saveStore();
   return true;
 }
@@ -64,16 +92,16 @@ function getLastSeenMatchId(user, queueId) {
   return user.lastSeenMatchIds?.[queueId] || null;
 }
 
-async function setLastSeenMatchId(discordId, queueId, matchId) {
-  const user = store.users[discordId];
+async function setLastSeenMatchId(guildId, discordId, queueId, matchId) {
+  const user = store.users[guildId]?.[discordId];
   if (!user) return;
   user.lastSeenMatchIds = { ...(user.lastSeenMatchIds || {}), [queueId]: matchId };
   user.updatedAt = new Date().toISOString();
   await saveStore();
 }
 
-async function setNotificationsEnabled(discordId, enabled) {
-  const user = store.users[discordId];
+async function setNotificationsEnabled(guildId, discordId, enabled) {
+  const user = store.users[guildId]?.[discordId];
   if (!user) return;
   user.notificationsEnabled = enabled;
   user.updatedAt = new Date().toISOString();
@@ -83,8 +111,8 @@ async function setNotificationsEnabled(discordId, enabled) {
 // Racha por cola: un jugador puede estar en racha de victorias en Solo/Duo y
 // en racha de derrotas en Flexible al mismo tiempo, son contadores independientes.
 // Devuelve la racha *después* de registrar este resultado, ej. { type: 'W', count: 3 }.
-async function updateStreak(discordId, queueId, won) {
-  const user = store.users[discordId];
+async function updateStreak(guildId, discordId, queueId, won) {
+  const user = store.users[guildId]?.[discordId];
   if (!user) return { type: won ? 'W' : 'L', count: 1 };
 
   const streaks = user.streaks || {};

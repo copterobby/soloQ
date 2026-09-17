@@ -48,9 +48,6 @@ async function collectUserWeeklyStats(user, queueIds, startTimeSeconds) {
 }
 
 async function postWeeklySummaryForGuild(client, guild) {
-  const discordGuild = await client.guilds.fetch(guild.guildId).catch(() => null);
-  if (!discordGuild) return;
-
   const channel = await client.channels.fetch(guild.channelId).catch(() => null);
   if (!channel || !channel.isTextBased()) return;
 
@@ -58,13 +55,10 @@ async function postWeeklySummaryForGuild(client, guild) {
   const weekStart = getMostRecentWeekStart(day, hour);
   const startTimeSeconds = Math.floor(weekStart.getTime() / 1000);
 
-  const users = userStore.getAllUsers();
+  const users = userStore.getAllUsers(guild.guildId);
   const rows = [];
 
   for (const user of users) {
-    const member = await discordGuild.members.fetch(user.discordId).catch(() => null);
-    if (!member) continue;
-
     const stats = await collectUserWeeklyStats(user, guild.trackedQueues, startTimeSeconds);
     if (stats.wins + stats.losses === 0) continue;
 

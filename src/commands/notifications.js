@@ -13,7 +13,7 @@ const data = new SlashCommandBuilder()
   );
 
 async function execute(interaction) {
-  const existing = userStore.getUser(interaction.user.id);
+  const existing = userStore.getUser(interaction.guildId, interaction.user.id);
   if (!existing) {
     await interaction.reply({
       content: 'Todavía no tienes una cuenta de LoL vinculada. Usa `/loluser` primero.',
@@ -23,7 +23,7 @@ async function execute(interaction) {
   }
 
   const enabled = interaction.options.getString('estado', true) === 'on';
-  await userStore.setNotificationsEnabled(interaction.user.id, enabled);
+  await userStore.setNotificationsEnabled(interaction.guildId, interaction.user.id, enabled);
 
   await interaction.reply({
     content: enabled

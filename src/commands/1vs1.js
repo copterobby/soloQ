@@ -13,8 +13,8 @@ const data = new SlashCommandBuilder()
   .addUserOption((option) => option.setName('usuario1').setDescription('Primer usuario').setRequired(true))
   .addUserOption((option) => option.setName('usuario2').setDescription('Segundo usuario').setRequired(true));
 
-async function collectPlayerStats(discordUser, startSeconds) {
-  const registeredUser = userStore.getUser(discordUser.id);
+async function collectPlayerStats(discordUser, startSeconds, guildId) {
+  const registeredUser = userStore.getUser(guildId, discordUser.id);
   if (!registeredUser) return { error: true, discordUser };
 
   const [{ matches, truncated }, rankedEntry] = await Promise.all([
@@ -102,8 +102,8 @@ async function execute(interaction) {
     const startText = formatSeasonStart(startSeconds);
 
     const [stats1, stats2] = await Promise.all([
-      collectPlayerStats(user1Discord, startSeconds),
-      collectPlayerStats(user2Discord, startSeconds),
+      collectPlayerStats(user1Discord, startSeconds, interaction.guildId),
+      collectPlayerStats(user2Discord, startSeconds, interaction.guildId),
     ]);
 
     const embed = new EmbedBuilder()

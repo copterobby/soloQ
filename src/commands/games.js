@@ -62,7 +62,7 @@ async function safeGetRankedEntry(puuid) {
 
 async function execute(interaction) {
   const discordUser = interaction.options.getUser('usuario', true);
-  const registeredUser = userStore.getUser(discordUser.id);
+  const registeredUser = userStore.getUser(interaction.guildId, discordUser.id);
 
   if (!registeredUser) {
     await interaction.reply({

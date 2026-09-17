@@ -8,7 +8,7 @@ Bot de Discord para trackear partidas de League of Legends de tus amigos. Funcio
 - `/unlink @usuario` — desvincula una cuenta (cualquiera puede desvincularse a sí mismo; para desvincular a otra persona hace falta el permiso "Gestionar servidor").
 - `/games @usuario` — muestra sus últimas 5 partidas de ranked solo/duo (resultado, campeón, KDA, daño, rango, duración), con botones para ver el detalle completo de cada partida (los 10 jugadores).
 - `/rank @usuario` — consulta rápida del rango y LP actuales, sin historial de partidas.
-- `/leaderboard` — leaderboard real del servidor: compara el rango de todos los vinculados que sean miembros de este servidor.
+- `/leaderboard` — leaderboard real del servidor: compara el rango de todos los vinculados en este servidor.
 - `/trackchannel #canal` — configura el canal donde se avisa automáticamente cuando alguien juega (permiso "Gestionar servidor").
 - `/trackqueue` — elige qué colas se avisan en este servidor: Solo/Duo, Flexible o ambas (permiso "Gestionar servidor").
 - `/notifications on|off` — activa o desactiva tus propios avisos automáticos sin desvincular la cuenta.
@@ -53,4 +53,4 @@ npm start
 
 - Con una API key de desarrollo el rate limit es bajo (20 req/s, 100 req/2min) y caduca cada 24h. Para dejar el bot corriendo de forma permanente hace falta pedir una Production API Key a Riot.
 - `data/users.json` y `data/guilds.json` guardan el estado del bot y no se suben a git.
-- Cada servidor de Discord tiene su propio canal y colas trackeadas; los avisos automáticos solo se publican en los servidores donde el jugador sea miembro.
+- Cada servidor de Discord tiene su propia configuración (canal, colas trackeadas) y sus propios vínculos de cuenta: un mismo usuario de Discord puede vincular cuentas distintas en cada servidor con `/loluser`, y `/unlink` solo afecta al servidor donde se ejecuta.

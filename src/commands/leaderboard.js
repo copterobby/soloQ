@@ -16,7 +16,7 @@ const data = new SlashCommandBuilder()
 async function execute(interaction) {
   await interaction.deferReply();
 
-  const users = userStore.getAllUsers();
+  const users = userStore.getAllUsers(interaction.guildId);
   if (users.length === 0) {
     await interaction.editReply('Nadie ha vinculado su cuenta con `/loluser` todavía.');
     return;
@@ -29,9 +29,6 @@ async function execute(interaction) {
   try {
     results = [];
     for (const user of users) {
-      const member = await interaction.guild.members.fetch(user.discordId).catch(() => null);
-      if (!member) continue;
-
       let entry = null;
       let record = { wins: 0, losses: 0, games: 0, truncated: false };
       try {
@@ -58,11 +55,6 @@ async function execute(interaction) {
     }
     console.error('Error inesperado en /leaderboard:', err);
     await interaction.editReply('Ha ocurrido un error inesperado.');
-    return;
-  }
-
-  if (results.length === 0) {
-    await interaction.editReply('Nadie vinculado está en este servidor.');
     return;
   }
 
