@@ -29,24 +29,18 @@ Los avisos automáticos incluyen 🌟 aviso de pentakill y 🔥 rachas de 3+ vic
 npm install
 ```
 
-5. Registra los comandos slash (solo hace falta cuando cambian los comandos):
-
-```bash
-npm run register-commands
-```
-
-Para que el bot funcione en **cualquier servidor** donde lo invites (no solo el de `DISCORD_GUILD_ID`), registra los comandos globalmente en su lugar:
-
-```bash
-npm run register-commands:global
-```
-
-(el registro global tarda hasta 1h en propagarse la primera vez; el de un solo servidor es instantáneo, útil mientras desarrollas)
-
-6. Arranca el bot:
+5. Arranca el bot:
 
 ```bash
 npm start
+```
+
+`npm start` registra los comandos slash **globalmente** antes de arrancar (hook `prestart`, ver `package.json`), así que no hace falta hacerlo a mano ni en cada despliegue — el bot funciona en cualquier servidor donde lo invites. Un fallo puntual al registrar (p. ej. Discord caído) no impide que el bot arranque; simplemente se reintenta en el siguiente despliegue.
+
+Durante desarrollo, si quieres iterar rápido en un solo servidor de pruebas (los cambios de comandos con scope de guild se propagan al instante, frente a hasta 1h en global), pon `DISCORD_GUILD_ID` en tu `.env` y usa:
+
+```bash
+npm run register-commands
 ```
 
 ## Notas
