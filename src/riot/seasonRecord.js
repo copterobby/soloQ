@@ -1,4 +1,5 @@
 const { getMatchIdsInRange, getMatchesByIds, QUEUE_IDS } = require('./match');
+const { isRemake } = require('../util/remake');
 
 const PAGE_SIZE = 100; // máximo que acepta la API de Riot por página
 const MAX_MATCHES = 300; // tope de seguridad total; si se supera, se marca truncated
@@ -25,7 +26,9 @@ async function getSeasonMatchIds(puuid, startTimeSeconds, queueId = QUEUE_IDS.SO
 
 async function getSeasonMatches(puuid, startTimeSeconds, queueId = QUEUE_IDS.SOLO) {
   const { matchIds, truncated } = await getSeasonMatchIds(puuid, startTimeSeconds, queueId);
-  const matches = await getMatchesByIds(matchIds);
+  const allMatches = await getMatchesByIds(matchIds);
+  // Los remakes no cuentan como victoria ni derrota (ni para el récord ni para las medias de 1vs1).
+  const matches = allMatches.filter((match) => !isRemake(match));
   return { matches, truncated };
 }
 

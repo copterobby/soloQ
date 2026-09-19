@@ -8,6 +8,7 @@ const { buildMatchDetailEmbed } = require('./discord/embeds');
 const { withLock } = require('./util/lock');
 const botStatus = require('./botStatus');
 const { notifyOwner } = require('./util/ownerAlert');
+const { isRemake } = require('./util/remake');
 
 const TRACKER_KEY = 'lol';
 
@@ -38,13 +39,22 @@ function buildHighlights(tracked, streak) {
   return highlights;
 }
 
+// Texto del aviso, compartido con /syncgames para que ambos digan lo mismo. Un remake no es
+// ni victoria ni derrota, así que no lleva "ha ganado/ha perdido" ni destacados de racha.
+function buildNotificationContent(discordId, tracked, remake, highlights) {
+  if (remake) {
+    return `🔄 <@${discordId}> ha tenido un remake jugando **${tracked.championName}** (no cuenta como victoria ni derrota)`;
+  }
+  const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
+  const highlightsText = highlights.length > 0 ? `\n${highlights.join(' · ')}` : '';
+  return `🎮 <@${discordId}> ${resultText} una partida jugando **${tracked.championName}**${highlightsText}`;
+}
+
 async function postMatchNotification(client, user, match, ddragonVersion, channels, highlights) {
   const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
   const embed = buildMatchDetailEmbed(match, user.puuid, ddragonVersion, rankedEntries);
   const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
-  const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
-  const highlightsText = highlights.length > 0 ? `\n${highlights.join(' · ')}` : '';
-  const content = `🎮 <@${user.discordId}> ${resultText} una partida jugando **${tracked.championName}**${highlightsText}`;
+  const content = buildNotificationContent(user.discordId, tracked, isRemake(match), highlights);
 
   for (const channel of channels) {
     try {
@@ -103,12 +113,14 @@ async function checkUserQueue(client, guildId, user, queueId, ddragonVersion) {
       try {
         const match = await getMatchById(matchId);
         const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
+        const remake = isRemake(match);
         // La racha se actualiza siempre, aunque el usuario tenga los avisos apagados o no
         // se resuelva ningún canal — refleja los resultados reales, no si se llegó a avisar.
-        const streak = await userStore.updateStreak(guildId, user.discordId, queueId, tracked.win);
+        // Un remake no cuenta como victoria ni derrota, así que no toca la racha.
+        const streak = remake ? null : await userStore.updateStreak(guildId, user.discordId, queueId, tracked.win);
 
         if (channels.length > 0) {
-          const highlights = buildHighlights(tracked, streak);
+          const highlights = remake ? [] : buildHighlights(tracked, streak);
           await postMatchNotification(client, user, match, ddragonVersion, channels, highlights);
         }
       } catch (err) {
@@ -167,4 +179,4 @@ function startMatchTracker(client) {
   }, POLL_INTERVAL_MS);
 }
 
-module.exports = { startMatchTracker, buildHighlights, STREAK_CALLOUT_THRESHOLD };
+module.exports = { startMatchTracker, buildHighlights, buildNotificationContent, STREAK_CALLOUT_THRESHOLD };

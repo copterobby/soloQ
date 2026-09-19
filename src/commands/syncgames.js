@@ -7,7 +7,8 @@ const { getLatestVersion } = require('../riot/ddragon');
 const { getRankedSoloEntriesByPuuid } = require('../riot/league');
 const { buildMatchDetailEmbed } = require('../discord/embeds');
 const { withLock } = require('../util/lock');
-const { buildHighlights } = require('../tracker');
+const { buildHighlights, buildNotificationContent } = require('../tracker');
+const { isRemake } = require('../util/remake');
 
 const SYNC_CHECK_COUNT = 20;
 
@@ -101,15 +102,17 @@ async function execute(interaction) {
           try {
             const match = await getMatchById(matchId);
             const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
-            const resultText = tracked.win ? 'ha ganado' : 'ha perdido';
-            const streak = await userStore.updateStreak(interaction.guildId, user.discordId, queueId, tracked.win);
-            const highlights = buildHighlights(tracked, streak);
-            const highlightsText = highlights.length > 0 ? `\n${highlights.join(' · ')}` : '';
+            const remake = isRemake(match);
+            // Un remake no cuenta como victoria ni derrota, así que no toca la racha.
+            const streak = remake
+              ? null
+              : await userStore.updateStreak(interaction.guildId, user.discordId, queueId, tracked.win);
+            const highlights = remake ? [] : buildHighlights(tracked, streak);
             const rankedEntries = await getRankedSoloEntriesByPuuid(match.info.participants.map((p) => p.puuid));
             const embed = buildMatchDetailEmbed(match, user.puuid, ddragonVersion, rankedEntries);
 
             await channel.send({
-              content: `🎮 <@${user.discordId}> ${resultText} una partida jugando **${tracked.championName}**${highlightsText}`,
+              content: buildNotificationContent(user.discordId, tracked, remake, highlights),
               embeds: [embed],
             });
             totalPosted += 1;

@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { championIconUrl, profileIconUrl } = require('../riot/ddragon');
+const { isRemake } = require('../util/remake');
 
 const WIN_COLOR = 0x2ecc71;
 const LOSS_COLOR = 0xe74c3c;
@@ -47,8 +48,11 @@ function formatKdaRatio(kills, deaths, assists) {
 }
 
 function buildGameHistoryEmbeds({ gameName, tagLine }, summaries, ddragonVersion, rankedEntry) {
-  const wins = summaries.filter((s) => s.win).length;
-  const losses = summaries.length - wins;
+  // Los remakes no cuentan como victoria ni derrota: se muestran aparte y no entran en el V-D.
+  const wins = summaries.filter((s) => !s.remake && s.win).length;
+  const losses = summaries.filter((s) => !s.remake && !s.win).length;
+  const remakes = summaries.filter((s) => s.remake).length;
+  const remakeNote = remakes > 0 ? ` · ${remakes} remake${remakes > 1 ? 's' : ''} (no cuenta${remakes > 1 ? 'n' : ''})` : '';
   const rankLine = rankedEntry
     ? `🏆 ${formatRankedEntry(rankedEntry)} (${rankedEntry.wins}V - ${rankedEntry.losses}D)`
     : '🏆 Sin clasificar en Ranked Solo/Duo';
@@ -59,7 +63,7 @@ function buildGameHistoryEmbeds({ gameName, tagLine }, summaries, ddragonVersion
     .setDescription(
       summaries.length === 0
         ? `${rankLine}\nNo se encontraron partidas recientes de ranked solo/duo.`
-        : `${rankLine}\n**Últimas ${summaries.length} partidas** · **${wins}V - ${losses}D**\nPulsa un botón de abajo para ver el detalle completo de esa partida (los 10 jugadores).`
+        : `${rankLine}\n**Últimas ${summaries.length} partidas** · **${wins}V - ${losses}D**${remakeNote}\nPulsa un botón de abajo para ver el detalle completo de esa partida (los 10 jugadores).`
     );
 
   if (ddragonVersion && summaries.length > 0) {
@@ -68,11 +72,11 @@ function buildGameHistoryEmbeds({ gameName, tagLine }, summaries, ddragonVersion
 
   const matchEmbeds = summaries.map((summary, index) => {
     const csPerMin = (summary.cs / (summary.durationSeconds / 60)).toFixed(1);
+    const resultLabel = summary.remake ? '🔄 Remake' : summary.win ? '✅ Victoria' : '❌ Derrota';
+    const resultColor = summary.remake ? NEUTRAL_COLOR : summary.win ? WIN_COLOR : LOSS_COLOR;
     const embed = new EmbedBuilder()
-      .setTitle(
-        `${NUMBER_EMOJIS[index] || `#${index + 1}`} ${summary.win ? '✅ Victoria' : '❌ Derrota'} — ${summary.championName}`
-      )
-      .setColor(summary.win ? WIN_COLOR : LOSS_COLOR)
+      .setTitle(`${NUMBER_EMOJIS[index] || `#${index + 1}`} ${resultLabel} — ${summary.championName}`)
+      .setColor(resultColor)
       .addFields(
         {
           name: 'KDA',
@@ -104,10 +108,13 @@ function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion, rankedEntrie
     (info.gameEndTimestamp || info.gameStartTimestamp + info.gameDuration * 1000) / 1000
   );
   const patch = (info.gameVersion || '').split('.').slice(0, 2).join('.');
+  const remake = isRemake(match);
+  const resultTitle = remake ? '🔄 Remake' : tracked.win ? '✅ Victoria' : '❌ Derrota';
+  const resultColor = remake ? NEUTRAL_COLOR : tracked.win ? WIN_COLOR : LOSS_COLOR;
 
   const embed = new EmbedBuilder()
-    .setTitle(`${tracked.win ? '✅ Victoria' : '❌ Derrota'} · Ranked Solo/Duo · ${formatDuration(durationSeconds)}`)
-    .setColor(tracked.win ? WIN_COLOR : LOSS_COLOR)
+    .setTitle(`${resultTitle} · Ranked Solo/Duo · ${formatDuration(durationSeconds)}`)
+    .setColor(resultColor)
     .setDescription(`🕐 <t:${endSeconds}:f>`)
     .setFooter({ text: `Parche ${patch}` })
     .setTimestamp(endSeconds * 1000);
@@ -126,7 +133,7 @@ function buildMatchDetailEmbed(match, trackedPuuid, ddragonVersion, rankedEntrie
     if (players.length === 0) continue;
 
     const label = teamId === 100 ? '🔵 Equipo Azul' : '🔴 Equipo Rojo';
-    const resultLabel = players[0].win ? 'Victoria' : 'Derrota';
+    const resultLabel = remake ? 'Remake' : players[0].win ? 'Victoria' : 'Derrota';
     const teamKills = totalTeamKills[teamId];
     const topDamage = Math.max(...players.map((p) => p.totalDamageDealtToChampions));
 

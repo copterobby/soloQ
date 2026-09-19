@@ -4,6 +4,7 @@ const guildStore = require('../storage/guildStore');
 const { getMatchIdsInRange, getMatchById } = require('../riot/match');
 const { RiotRateLimitError, RiotApiError } = require('../riot/client');
 const { getMostRecentWeekStart, DAY_NAMES } = require('../util/weekSchedule');
+const { isRemake } = require('../util/remake');
 
 const MAX_MATCHES_PER_QUEUE = 30;
 
@@ -45,6 +46,7 @@ async function execute(interaction) {
 
       for (const matchId of matchIds) {
         const match = await getMatchById(matchId);
+        if (isRemake(match)) continue;
         const tracked = match.info.participants.find((p) => p.puuid === registeredUser.puuid);
         if (tracked.win) wins += 1;
         else losses += 1;

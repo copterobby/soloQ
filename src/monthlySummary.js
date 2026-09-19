@@ -6,6 +6,7 @@ const { getRankedSoloEntry } = require('./riot/league');
 const { formatRankedEntry } = require('./discord/embeds');
 const botStatus = require('./botStatus');
 const { notifyOwner } = require('./util/ownerAlert');
+const { isRemake } = require('./util/remake');
 
 // Hermano de weeklySummary.js con el mismo patrón, pero de cadencia mensual y coronando un
 // MVP en vez de solo listar partidas.
@@ -45,6 +46,7 @@ async function collectUserMonthlyStats(user, queueIds, startTimeSeconds, endTime
     for (const matchId of matchIds) {
       try {
         const match = await getMatchById(matchId);
+        if (isRemake(match)) continue;
         const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
         if (tracked.win) wins += 1;
         else losses += 1;

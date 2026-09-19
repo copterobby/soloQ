@@ -11,6 +11,7 @@ const { getLatestVersion } = require('../riot/ddragon');
 const { getRankedSoloEntry, getRankedSoloEntriesByPuuid } = require('../riot/league');
 const { buildGameHistoryEmbeds, buildMatchDetailEmbed, NUMBER_EMOJIS } = require('../discord/embeds');
 const userStore = require('../storage/userStore');
+const { isRemake } = require('../util/remake');
 
 const MATCH_COUNT = 5;
 const COLLECTOR_DURATION_MS = 5 * 60 * 1000;
@@ -27,6 +28,7 @@ function summarizeMatch(match, puuid) {
   return {
     matchId: match.metadata.matchId,
     win: participant.win,
+    remake: isRemake(match),
     championName: participant.championName,
     kills: participant.kills,
     deaths: participant.deaths,

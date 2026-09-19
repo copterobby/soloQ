@@ -5,6 +5,7 @@ const { getMatchIdsInRange, getMatchById } = require('./riot/match');
 const { getRankedSoloEntry } = require('./riot/league');
 const { formatRankedEntry } = require('./discord/embeds');
 const { getMostRecentWeekStart } = require('./util/weekSchedule');
+const { isRemake } = require('./util/remake');
 const botStatus = require('./botStatus');
 const { notifyOwner } = require('./util/ownerAlert');
 
@@ -31,6 +32,7 @@ async function collectUserWeeklyStats(user, queueIds, startTimeSeconds) {
     for (const matchId of matchIds) {
       try {
         const match = await getMatchById(matchId);
+        if (isRemake(match)) continue;
         const tracked = match.info.participants.find((p) => p.puuid === user.puuid);
         if (tracked.win) wins += 1;
         else losses += 1;
